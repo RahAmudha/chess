@@ -114,6 +114,7 @@ public:
 	BitHolder &getHolderAt(const int x, const int y) { return *getGrid()->getSquare(x, y); }
 
 	const unsigned int getCurrentTurnNo() { return _gameOptions.currentTurnNo; };
+	void setCurrentTurnNo(int turnNo) {_gameOptions.currentTurnNo = turnNo; };
 	const int getScore() { return _gameOptions.score; };
 	void setScore(int score) { _gameOptions.score = score; };
 	// this code below limits class to two players at the most, but it ensures player 0 is white and player 1 is black

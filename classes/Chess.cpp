@@ -51,16 +51,169 @@ void Chess::setUpBoard()
     startGame();
 }
 
+// square->setBit(PieceForPlayer(playerNumber - 1, Pawn));
 void Chess::FENtoBoard(const std::string& fen) {
     // convert a FEN string to a board
     // FEN is a space delimited string with 6 fields
     // 1: piece placement (from white's perspective)
+
+    int index = 0;
+    int count = 0;
+
+    Bit *bit = nullptr;
+
+    for (;fen[index] != ' ' && index < int(fen.size()); ++index){}
+    for (;fen[index] != '/' && index >= 0; --index){} index++;
+
+    // I just really wanted to use this function lol
+    _grid->forEachSquare([&](ChessSquare* square, int x, int y) {
+        bit = nullptr;
+        if (count == 0){
+            WACK: // Truly
+            if (fen[index] == ' ' || index >= int(fen.size())) {
+                for (;fen[index] != '/' && index >= 0; --index){};
+                for (--index; fen[index] != '/' && index >= 0; --index){};
+                ++index;
+            }
+
+            switch (fen[index]){
+
+                // Move the index but stay on the same square!
+                // Move the index to the start of the previous row
+                case '/': 
+                    for (--index; fen[index] != '/' && index >= 0; --index){} 
+                    for (--index; fen[index] != '/' && index >= 0; --index){} 
+                    ++index; goto WACK;
+
+                // Black Pieces
+                case 'p': bit = PieceForPlayer(1, Pawn); break;
+                case 'n': bit = PieceForPlayer(1, Knight); break;
+                case 'b': bit = PieceForPlayer(1, Bishop); break;
+                case 'r': bit = PieceForPlayer(1, Rook); break;
+                case 'q': bit = PieceForPlayer(1, Queen); break;
+                case 'k': bit = PieceForPlayer(1, King); break;
+                
+                // White Pieces
+                case 'P': bit = PieceForPlayer(0, Pawn); break;
+                case 'N': bit = PieceForPlayer(0, Knight); break;
+                case 'B': bit = PieceForPlayer(0, Bishop); break;
+                case 'R': bit = PieceForPlayer(0, Rook); break;
+                case 'Q': bit = PieceForPlayer(0, Queen); break;
+                case 'K': bit = PieceForPlayer(0, King); break;
+
+                // Keep count of how many empty spaces
+                case '8': count = 7; break;
+                case '7': count = 6; break;
+                case '6': count = 5; break;
+                case '5': count = 4; break;
+                case '4': count = 3; break;
+                case '3': count = 2; break;
+                case '2': count = 1; break;
+                case '1': break;
+
+                default: break;
+            }
+
+            if (bit){
+                bit->setPosition(square->getPosition());
+                square->setBit(bit);
+            }
+
+            ++index;
+
+        } else {
+            --count;
+        }
+    });
+
     // NOT PART OF THIS ASSIGNMENT BUT OTHER THINGS THAT CAN BE IN A FEN STRING
     // ARE BELOW
     // 2: active color (W or B)
+    for (;fen[index] != ' ' && index < int(fen.size()); ++index){}
+    ++index;
+
+    if (index > int(fen.size())) return;
+    
+    int currentPlayer;
+    if (fen[index] != '-') {
+        currentPlayer = fen[index] == 'b';
+    }
+
+    // Created custom function to set the current turn number (This does sets the full moves and the current player)
+
     // 3: castling availability (KQkq or -)
+    for (;fen[index] != ' ' && index < int(fen.size()); ++index){}
+    ++index;
+
+    if (index > int(fen.size())) return;
+
+    if (fen[index] != '-'){
+
+        for (;fen[index] != ' ' && index < int(fen.size()); ++index){
+            switch (fen[index]){
+                
+                // Will implement later
+                case 'w': break;
+                case 'b': break;
+                case 'W': break;
+                case 'B': break;
+                default: break;
+            }
+        }
+
+    }
+
     // 4: en passant target square (in algebraic notation, or -)
+    int col, row;
+    ++index;
+
+    if (index > int(fen.size())) return;
+
+    if (fen[index] != '-'){
+        col = fen[index] - 'a';
+        ++index;
+        row = fen[index] - '0';
+    }
+    
+    // Will store these values somewhere
+
     // 5: halfmove clock (number of halfmoves since the last capture or pawn advance)
+    for (;fen[index] != ' ' && index < int(fen.size()); ++index){}
+    ++index;
+
+    if (index > int(fen.size())) return;
+
+    int tenh, oneh, halfmove=-1;
+    if (fen[index] != '-'){
+        tenh = fen[index] - '0';
+        ++index;
+        if (index < int(fen.size() || fen[index] != ' ')){
+            oneh = fen[index] - '0';
+            halfmove = tenh*10 + oneh;
+        } else {
+            halfmove = tenh;
+        }
+    }
+
+    // Step 6: Full Moves
+    for (;fen[index] != ' ' && index < int(fen.size()); ++index){}
+    ++index;
+
+    if (index > int(fen.size())) return;
+
+    int tenf, onef, fullmove=-1;
+    if (fen[index] != '-'){
+        tenf = fen[index] - '0';
+        ++index;
+        if (index < int(fen.size())){
+            onef = fen[index] - '0';
+            fullmove = tenf*10 + onef;
+        } else {
+            fullmove = tenf;
+        }
+    }
+
+    setCurrentTurnNo(fullmove + currentPlayer);
 }
 
 bool Chess::actionForEmptyHolder(BitHolder &holder)

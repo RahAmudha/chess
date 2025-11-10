@@ -2,6 +2,8 @@
 #include "Entity.h"
 #include "../imgui/imgui.h"
 
+#include <cstdint>
+
 class Sprite : public Entity
 {
     // sprite contains code for a simple OpenGL sprite class that is heirarchical, and can be used to draw a sprite with a texture
