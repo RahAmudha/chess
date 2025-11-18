@@ -1,4 +1,5 @@
 #include "Grid.h"
+#include "ChessSquare.h"
 
 Grid::Grid(int width, int height) : _width(width), _height(height)
 {

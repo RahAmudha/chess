@@ -1,6 +1,10 @@
 #include "Chess.h"
+#include "Bitboard.h"
+#include <cstdint>
 #include <limits>
 #include <cmath>
+
+BitboardElement lastGeneratedMoves;
 
 Chess::Chess()
 {
@@ -29,6 +33,8 @@ Bit* Chess::PieceForPlayer(const int playerNumber, ChessPiece piece)
     const char* pieces[] = { "pawn.png", "knight.png", "bishop.png", "rook.png", "queen.png", "king.png" };
 
     Bit* bit = new Bit();
+    int newPiece = (piece | playerNumber << 7);
+    bit->setGameTag(newPiece);
     // should possibly be cached from player class?
     const char* pieceName = pieces[piece - 1];
     std::string spritePath = std::string("") + (playerNumber == 0 ? "w_" : "b_") + pieceName;
@@ -51,7 +57,7 @@ void Chess::setUpBoard()
     startGame();
 }
 
-// square->setBit(PieceForPlayer(playerNumber - 1, Pawn));
+
 void Chess::FENtoBoard(const std::string& fen) {
     // convert a FEN string to a board
     // FEN is a space delimited string with 6 fields
@@ -222,18 +228,218 @@ bool Chess::actionForEmptyHolder(BitHolder &holder)
 }
 
 bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
-{
+{   
+    ChessSquare* source = dynamic_cast<ChessSquare*>(&src);
+
+    ChessPiece piece = (ChessPiece)(bit.gameTag());
+    std::cout << piece << ' ' << Pawn << std::endl;
+    
+    int index = _grid->getIndex(source->getColumn(), source->getRow());
+
+    // Ask the bitboard engine for a mask of legal moves
+    BitboardElement moves = getLegalMovesFor(piece, source, index);
+
+    // Save these moves so GUI can highlight them
+    lastGeneratedMoves = moves;
+
     // need to implement friendly/unfriendly in bit so for now this hack
-    int currentPlayer = getCurrentPlayer()->playerNumber() * 128;
-    int pieceColor = bit.gameTag() & 128;
+    int currentPlayer = getCurrentPlayer()->playerNumber();
+    int pieceColor = bit.gameTag() >> 7;
     if (pieceColor == currentPlayer) return true;
     return false;
 }
 
+BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int index){
+    uint64_t whitePieces = 0;
+    uint64_t blackPieces = 0;
+    _grid->forEachSquare([&](ChessSquare* square, int x, int y){
+        if (!square->bit()) return;
+        int index = _grid->getIndex(x, y);
+        int pieceColor = square->bit()->gameTag() >> 7;
+        if (pieceColor) {
+            blackPieces |= 1ULL << index;
+        } else {
+            whitePieces |= 1ULL << index;
+        }
+    });
+
+    bool isWhite = (src->bit()->gameTag() >> 7) == 0;
+    uint64_t currentPos = 1ULL << index;
+
+    const uint64_t currentPieces = isWhite ? whitePieces : blackPieces;
+    const uint64_t opponentPieces = isWhite ? blackPieces : whitePieces;
+
+    const uint64_t startRank = isWhite ? 0x000000000000FF00ULL : 0x00FF000000000000ULL;
+
+    const uint64_t notAFile = 0xfefefefefefefefeULL;
+    const uint64_t notHFile = 0x7f7f7f7f7f7f7f7fULL;
+
+    const uint64_t occupied = whitePieces | blackPieces;
+
+    switch(piece & 127){
+        case Pawn: {
+
+            const uint64_t oneStep  = isWhite ? (currentPos << 8) : (currentPos >> 8);
+            const uint64_t twoStep  = isWhite ? (currentPos << 16) : (currentPos >> 16);
+
+            const uint64_t captureLeft  = isWhite ? ((currentPos << 7) & notAFile)
+                                                : ((currentPos >> 9) & notHFile);
+            const uint64_t captureRight = isWhite ? ((currentPos << 9) & notHFile)
+                                                : ((currentPos >> 7) & notAFile);
+            
+            currentPos |= (captureLeft & opponentPieces) | (captureRight & opponentPieces);
+
+            if (oneStep & occupied) break;
+
+            currentPos |= oneStep;
+            if ((currentPos & startRank) && !(twoStep & occupied)) currentPos |= twoStep;
+
+            break;
+        }
+
+        case Knight: {
+            const uint64_t notABFile = 0xfcfcfcfcfcfcfcfcULL;
+            const uint64_t notGHFile = 0x3f3f3f3f3f3f3f3fULL;
+
+            const uint64_t knightMoves =  (currentPos & notAFile) << 15  | 
+                                    (currentPos & notHFile) << 17  |
+                                    (currentPos & notABFile) << 6  |
+                                    (currentPos & notGHFile) << 10 |
+                                    (currentPos & notHFile) >> 15  |
+                                    (currentPos & notAFile) >> 17  |
+                                    (currentPos & notGHFile) >> 6  |
+                                    (currentPos & notABFile) >> 10 ;
+
+            currentPos |= knightMoves;
+            
+            currentPos &= ~currentPieces;
+
+            break;
+        }
+
+        case Bishop : { // Will work on something more efficient later
+            uint64_t moves = 0ULL;
+
+            uint64_t pos = currentPos;
+
+            uint64_t temp = pos;
+            while (temp & notHFile) {
+                temp <<= 9;
+                if (temp & currentPieces) break;
+                moves |= temp;
+                if (temp & opponentPieces) break; 
+            }
+
+            temp = pos;
+            while (temp & notAFile) {
+                temp <<= 7;
+                if (temp & currentPieces) break;
+                moves |= temp;
+                if (temp & opponentPieces) break; 
+            }
+
+            temp = pos;
+            while (temp & notHFile) {
+                temp >>= 7;
+                if (temp & currentPieces) break;
+                moves |= temp;
+                if (temp & opponentPieces) break; 
+            }
+
+            temp = pos;
+            while (temp & notAFile) {
+                temp >>= 9;
+                if (temp & currentPieces) break;
+                moves |= temp;
+                if (temp & opponentPieces) break; 
+            }
+
+            currentPos = moves;
+        }
+
+        case Rook : {
+            uint64_t moves = 0ULL;
+
+            uint64_t pos = currentPos;
+
+            uint64_t temp = pos;
+            while (temp & notHFile) {
+                temp <<= 1;
+                if (temp & occupied) {
+                    moves |= temp & opponentPieces;
+                    break;
+                }
+                moves |= temp;
+            }
+
+            temp = pos;
+            while (temp & notAFile) {
+                temp >>= 1;
+                if (temp & occupied) {
+                    moves |= temp & opponentPieces;
+                    break;
+                }
+                moves |= temp;
+            }
+
+            temp = pos;
+            while ((temp >> 8) != 0) {
+                temp >>= 8;
+                if (temp & occupied) {
+                    moves |= temp & opponentPieces;
+                    break;
+                }
+                moves |= temp;
+            }
+
+            temp = pos;
+            while ((temp << 8) != 0) {
+                temp <<= 8;
+                if (temp & occupied) {
+                    moves |= temp & opponentPieces;
+                    break;
+                }
+                moves |= temp;
+            }
+
+            currentPos = moves;
+        }
+
+        case King : {
+            uint64_t moves = 0ULL;
+
+            uint64_t east  = (currentPos & notHFile) << 1;
+            uint64_t west  = (currentPos & notAFile) >> 1;
+            uint64_t north = currentPos << 8;
+            uint64_t south = currentPos >> 8;
+
+            uint64_t ne = (currentPos & notHFile) << 9;
+            uint64_t nw = (currentPos & notAFile) << 7; 
+            uint64_t se = (currentPos & notHFile) >> 7;
+            uint64_t sw = (currentPos & notAFile) >> 9;
+
+            moves |= east | west | north | south | ne | nw | se | sw;
+
+            moves &= ~currentPieces;
+
+            currentPos = moves;
+        }
+
+    }
+
+    BitboardElement(currentPos).printBitboard();
+
+    return BitboardElement(currentPos);
+}
+
 bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
 {
+    ChessSquare* source = dynamic_cast<ChessSquare*>(&src);
+    ChessSquare* destination = dynamic_cast<ChessSquare*>(&dst);
+
     return true;
 }
+
 
 void Chess::stopGame()
 {
