@@ -4,6 +4,10 @@
 #include "Grid.h"
 #include "Bitboard.h"
 
+// Piece Move Generators
+#include "pieceMoves/BishopMoves.h"
+#include "pieceMoves/RookMoves.h"
+
 constexpr int pieceSize = 80;
 
 class Chess : public Game
@@ -37,4 +41,8 @@ private:
     BitboardElement getLegalMovesFor(ChessPiece piece, ChessSquare* src, int index);
 
     Grid* _grid;
+    
+    // Storing Precomputed Piece Generation in private vars
+    BishopMoves* _bMoves;
+    RookMoves* _rMoves;
 };

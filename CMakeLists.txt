@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5.0)
+cmake_minimum_required(VERSION 3.10.0)
 project(tictactoe VERSION 0.1.0 LANGUAGES C CXX)
 
 # check for macOS
@@ -69,6 +69,10 @@ add_executable(demo Application.cpp
                           classes/Othello.cpp
                           classes/Connect4.cpp
                           classes/Chess.cpp
+
+                          classes/pieceMoves/BishopMoves.cpp
+                          classes/pieceMoves/RookMoves.cpp
+                          classes/pieceMoves/SlidingMoves.cpp
                           ${BCKD_FILE}
                           ${MAIN_FILE}
                           ${IMPL_FILE}

@@ -4,11 +4,12 @@
 #include <limits>
 #include <cmath>
 
-BitboardElement lastGeneratedMoves;
-
 Chess::Chess()
 {
     _grid = new Grid(8, 8);
+
+    _bMoves = new BishopMoves();
+    _rMoves = new RookMoves();
 }
 
 Chess::~Chess()
@@ -56,7 +57,6 @@ void Chess::setUpBoard()
 
     startGame();
 }
-
 
 void Chess::FENtoBoard(const std::string& fen) {
     // convert a FEN string to a board
@@ -229,19 +229,6 @@ bool Chess::actionForEmptyHolder(BitHolder &holder)
 
 bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
 {   
-    ChessSquare* source = dynamic_cast<ChessSquare*>(&src);
-
-    ChessPiece piece = (ChessPiece)(bit.gameTag());
-    std::cout << piece << ' ' << Pawn << std::endl;
-    
-    int index = _grid->getIndex(source->getColumn(), source->getRow());
-
-    // Ask the bitboard engine for a mask of legal moves
-    BitboardElement moves = getLegalMovesFor(piece, source, index);
-
-    // Save these moves so GUI can highlight them
-    lastGeneratedMoves = moves;
-
     // need to implement friendly/unfriendly in bit so for now this hack
     int currentPlayer = getCurrentPlayer()->playerNumber();
     int pieceColor = bit.gameTag() >> 7;
@@ -250,8 +237,8 @@ bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
 }
 
 BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int index){
-    uint64_t whitePieces = 0;
-    uint64_t blackPieces = 0;
+    uint64_t whitePieces = 0ULL;
+    uint64_t blackPieces = 0ULL;
     _grid->forEachSquare([&](ChessSquare* square, int x, int y){
         if (!square->bit()) return;
         int index = _grid->getIndex(x, y);
@@ -262,18 +249,14 @@ BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int 
             whitePieces |= 1ULL << index;
         }
     });
-
     bool isWhite = (src->bit()->gameTag() >> 7) == 0;
     uint64_t currentPos = 1ULL << index;
 
     const uint64_t currentPieces = isWhite ? whitePieces : blackPieces;
     const uint64_t opponentPieces = isWhite ? blackPieces : whitePieces;
-
     const uint64_t startRank = isWhite ? 0x000000000000FF00ULL : 0x00FF000000000000ULL;
-
     const uint64_t notAFile = 0xfefefefefefefefeULL;
     const uint64_t notHFile = 0x7f7f7f7f7f7f7f7fULL;
-
     const uint64_t occupied = whitePieces | blackPieces;
 
     switch(piece & 127){
@@ -296,7 +279,6 @@ BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int 
 
             break;
         }
-
         case Knight: {
             const uint64_t notABFile = 0xfcfcfcfcfcfcfcfcULL;
             const uint64_t notGHFile = 0x3f3f3f3f3f3f3f3fULL;
@@ -316,107 +298,36 @@ BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int 
 
             break;
         }
-
-        case Bishop : { // Will work on something more efficient later
-            uint64_t moves = 0ULL;
-
-            uint64_t pos = currentPos;
-
-            uint64_t temp = pos;
-            while (temp & notHFile) {
-                temp <<= 9;
-                if (temp & currentPieces) break;
-                moves |= temp;
-                if (temp & opponentPieces) break; 
-            }
-
-            temp = pos;
-            while (temp & notAFile) {
-                temp <<= 7;
-                if (temp & currentPieces) break;
-                moves |= temp;
-                if (temp & opponentPieces) break; 
-            }
-
-            temp = pos;
-            while (temp & notHFile) {
-                temp >>= 7;
-                if (temp & currentPieces) break;
-                moves |= temp;
-                if (temp & opponentPieces) break; 
-            }
-
-            temp = pos;
-            while (temp & notAFile) {
-                temp >>= 9;
-                if (temp & currentPieces) break;
-                moves |= temp;
-                if (temp & opponentPieces) break; 
-            }
-
-            currentPos = moves;
+        case Bishop : {
+            currentPos = _bMoves->getMoves(index, occupied);
+            currentPos &= ~currentPieces;
+            break;
         }
-
-        case Rook : {
-            uint64_t moves = 0ULL;
-
-            uint64_t pos = currentPos;
-
-            uint64_t temp = pos;
-            while (temp & notHFile) {
-                temp <<= 1;
-                if (temp & occupied) {
-                    moves |= temp & opponentPieces;
-                    break;
-                }
-                moves |= temp;
-            }
-
-            temp = pos;
-            while (temp & notAFile) {
-                temp >>= 1;
-                if (temp & occupied) {
-                    moves |= temp & opponentPieces;
-                    break;
-                }
-                moves |= temp;
-            }
-
-            temp = pos;
-            while ((temp >> 8) != 0) {
-                temp >>= 8;
-                if (temp & occupied) {
-                    moves |= temp & opponentPieces;
-                    break;
-                }
-                moves |= temp;
-            }
-
-            temp = pos;
-            while ((temp << 8) != 0) {
-                temp <<= 8;
-                if (temp & occupied) {
-                    moves |= temp & opponentPieces;
-                    break;
-                }
-                moves |= temp;
-            }
-
-            currentPos = moves;
+        case Rook: {
+            currentPos = _rMoves->getMoves(index, occupied);
+            currentPos &= ~currentPieces;
+            BitboardElement(occupied).printBitboard();
+            break;
         }
-
+        case Queen: {
+            uint64_t bishopMoves = _bMoves->getMoves(index, occupied); 
+            uint64_t rookMoves = _rMoves->getMoves(index, occupied);
+            currentPos = bishopMoves | rookMoves; // Queen = bishop + rook
+            currentPos &= ~currentPieces;
+            break;
+        }
         case King : {
             uint64_t moves = 0ULL;
 
-            uint64_t east  = (currentPos & notHFile) << 1;
-            uint64_t west  = (currentPos & notAFile) >> 1;
-            uint64_t north = currentPos << 8;
-            uint64_t south = currentPos >> 8;
+            const uint64_t east  = (currentPos & notHFile) << 1;
+            const uint64_t west  = (currentPos & notAFile) >> 1;
+            const uint64_t north = currentPos << 8;
+            const uint64_t south = currentPos >> 8;
 
-            uint64_t ne = (currentPos & notHFile) << 9;
-            uint64_t nw = (currentPos & notAFile) << 7; 
-            uint64_t se = (currentPos & notHFile) >> 7;
-            uint64_t sw = (currentPos & notAFile) >> 9;
+            const uint64_t ne = (currentPos & notHFile) << 9;
+            const uint64_t nw = (currentPos & notAFile) << 7; 
+            const uint64_t se = (currentPos & notHFile) >> 7;
+            const uint64_t sw = (currentPos & notAFile) >> 9;
 
             moves |= east | west | north | south | ne | nw | se | sw;
 
@@ -424,11 +335,9 @@ BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int 
 
             currentPos = moves;
         }
-
     }
 
     BitboardElement(currentPos).printBitboard();
-
     return BitboardElement(currentPos);
 }
 
@@ -437,9 +346,19 @@ bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
     ChessSquare* source = dynamic_cast<ChessSquare*>(&src);
     ChessSquare* destination = dynamic_cast<ChessSquare*>(&dst);
 
-    return true;
-}
+    ChessPiece piece = (ChessPiece)(bit.gameTag());
+    
+    int srcIndex = _grid->getIndex(source->getColumn(), source->getRow());
+    int dstIndex = _grid->getIndex(destination->getColumn(), destination->getRow());
 
+    BitboardElement moves = getLegalMovesFor(piece, source, srcIndex);
+
+    uint64_t targetPos = 1ULL << dstIndex;
+
+    if (moves.getData() & targetPos) return true;
+
+    return false;
+}
 
 void Chess::stopGame()
 {
