@@ -60,6 +60,7 @@ add_executable(demo Application.cpp
                           classes/Bit.cpp
                           classes/BitHolder.cpp
                           classes/Game.cpp
+                          classes/GameState.cpp
                           classes/Sprite.cpp
                           classes/Square.cpp
                           classes/ChessSquare.cpp
@@ -69,10 +70,6 @@ add_executable(demo Application.cpp
                           classes/Othello.cpp
                           classes/Connect4.cpp
                           classes/Chess.cpp
-
-                          classes/pieceMoves/BishopMoves.cpp
-                          classes/pieceMoves/RookMoves.cpp
-                          classes/pieceMoves/SlidingMoves.cpp
                           ${BCKD_FILE}
                           ${MAIN_FILE}
                           ${IMPL_FILE}

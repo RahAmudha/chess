@@ -7,14 +7,13 @@
 Chess::Chess()
 {
     _grid = new Grid(8, 8);
-
-    _bMoves = new BishopMoves();
-    _rMoves = new RookMoves();
+    _gameState = new GameState();
 }
 
 Chess::~Chess()
 {
     delete _grid;
+    delete _gameState;
 }
 
 char Chess::pieceNotation(int x, int y) const
@@ -54,6 +53,8 @@ void Chess::setUpBoard()
 
     _grid->initializeChessSquares(pieceSize, "boardsquare.png");
     FENtoBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+
+    _gameState->init(stateString().c_str(), WHITE);
 
     startGame();
 }
@@ -236,128 +237,102 @@ bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
     return false;
 }
 
-BitboardElement Chess::getLegalMovesFor(ChessPiece piece, ChessSquare* src, int index){
-    uint64_t whitePieces = 0ULL;
-    uint64_t blackPieces = 0ULL;
-    _grid->forEachSquare([&](ChessSquare* square, int x, int y){
-        if (!square->bit()) return;
-        int index = _grid->getIndex(x, y);
-        int pieceColor = square->bit()->gameTag() >> 7;
-        if (pieceColor) {
-            blackPieces |= 1ULL << index;
-        } else {
-            whitePieces |= 1ULL << index;
-        }
-    });
-    bool isWhite = (src->bit()->gameTag() >> 7) == 0;
-    uint64_t currentPos = 1ULL << index;
-
-    const uint64_t currentPieces = isWhite ? whitePieces : blackPieces;
-    const uint64_t opponentPieces = isWhite ? blackPieces : whitePieces;
-    const uint64_t startRank = isWhite ? 0x000000000000FF00ULL : 0x00FF000000000000ULL;
-    const uint64_t notAFile = 0xfefefefefefefefeULL;
-    const uint64_t notHFile = 0x7f7f7f7f7f7f7f7fULL;
-    const uint64_t occupied = whitePieces | blackPieces;
-
-    switch(piece & 127){
-        case Pawn: {
-
-            const uint64_t oneStep  = isWhite ? (currentPos << 8) : (currentPos >> 8);
-            const uint64_t twoStep  = isWhite ? (currentPos << 16) : (currentPos >> 16);
-
-            const uint64_t captureLeft  = isWhite ? ((currentPos << 7) & notAFile)
-                                                : ((currentPos >> 9) & notHFile);
-            const uint64_t captureRight = isWhite ? ((currentPos << 9) & notHFile)
-                                                : ((currentPos >> 7) & notAFile);
-            
-            currentPos |= (captureLeft & opponentPieces) | (captureRight & opponentPieces);
-
-            if (oneStep & occupied) break;
-
-            currentPos |= oneStep;
-            if ((currentPos & startRank) && !(twoStep & occupied)) currentPos |= twoStep;
-
-            break;
-        }
-        case Knight: {
-            const uint64_t notABFile = 0xfcfcfcfcfcfcfcfcULL;
-            const uint64_t notGHFile = 0x3f3f3f3f3f3f3f3fULL;
-
-            const uint64_t knightMoves =  (currentPos & notAFile) << 15  | 
-                                    (currentPos & notHFile) << 17  |
-                                    (currentPos & notABFile) << 6  |
-                                    (currentPos & notGHFile) << 10 |
-                                    (currentPos & notHFile) >> 15  |
-                                    (currentPos & notAFile) >> 17  |
-                                    (currentPos & notGHFile) >> 6  |
-                                    (currentPos & notABFile) >> 10 ;
-
-            currentPos |= knightMoves;
-            
-            currentPos &= ~currentPieces;
-
-            break;
-        }
-        case Bishop : {
-            currentPos = _bMoves->getMoves(index, occupied);
-            currentPos &= ~currentPieces;
-            break;
-        }
-        case Rook: {
-            currentPos = _rMoves->getMoves(index, occupied);
-            currentPos &= ~currentPieces;
-            BitboardElement(occupied).printBitboard();
-            break;
-        }
-        case Queen: {
-            uint64_t bishopMoves = _bMoves->getMoves(index, occupied); 
-            uint64_t rookMoves = _rMoves->getMoves(index, occupied);
-            currentPos = bishopMoves | rookMoves; // Queen = bishop + rook
-            currentPos &= ~currentPieces;
-            break;
-        }
-        case King : {
-            uint64_t moves = 0ULL;
-
-            const uint64_t east  = (currentPos & notHFile) << 1;
-            const uint64_t west  = (currentPos & notAFile) >> 1;
-            const uint64_t north = currentPos << 8;
-            const uint64_t south = currentPos >> 8;
-
-            const uint64_t ne = (currentPos & notHFile) << 9;
-            const uint64_t nw = (currentPos & notAFile) << 7; 
-            const uint64_t se = (currentPos & notHFile) >> 7;
-            const uint64_t sw = (currentPos & notAFile) >> 9;
-
-            moves |= east | west | north | south | ne | nw | se | sw;
-
-            moves &= ~currentPieces;
-
-            currentPos = moves;
-        }
-    }
-
-    BitboardElement(currentPos).printBitboard();
-    return BitboardElement(currentPos);
-}
-
 bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
 {
     ChessSquare* source = dynamic_cast<ChessSquare*>(&src);
     ChessSquare* destination = dynamic_cast<ChessSquare*>(&dst);
 
-    ChessPiece piece = (ChessPiece)(bit.gameTag());
-    
-    int srcIndex = _grid->getIndex(source->getColumn(), source->getRow());
-    int dstIndex = _grid->getIndex(destination->getColumn(), destination->getRow());
+    int srcIndex = source->getColumn() + 8 * source->getRow();
+    int dstIndex = destination->getColumn() + 8 * destination->getRow();
 
-    BitboardElement moves = getLegalMovesFor(piece, source, srcIndex);
+    auto moves = _gameState->generateAllMoves();
 
-    uint64_t targetPos = 1ULL << dstIndex;
-
-    if (moves.getData() & targetPos) return true;
-
+    for (auto &m : moves) {
+        if (m.from == srcIndex && m.to == dstIndex){
+            _lastMove = m;
+            return true;
+        }
+    }
     return false;
+}
+
+// Only added the line where we push the last move into the engine
+void Chess::endTurn(){
+    _gameOptions.currentTurnNo++;
+	std::string startState = stateString();
+	Turn *turn = new Turn;
+	turn->_boardState = stateString();
+	turn->_date = (int)_gameOptions.currentTurnNo;
+	turn->_score = _gameOptions.score;
+	turn->_gameNumber = _gameOptions.gameNumber;
+	_turns.push_back(turn);
+
+    _gameState->pushMove(_lastMove);
+
+    _lastMove.print();
+
+        // -----------------------
+    // GUI update for castling
+    // -----------------------
+
+    Bit* rook;
+    if (_lastMove.flags & MoveFlags::KingSideCastle) {
+        if (_lastMove.piece == King) {
+            // Move the rook visually for white or black
+            if (_gameState->color == BLACK) { 
+                // White just moved, king-side rook from h1->f1
+                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
+                    if (x == 5 && y == 0){
+                        rook = PieceForPlayer(0, Rook);
+                        rook->setPosition(square->getPosition());
+                        square->setBit(rook);
+                    } else if (x == 7 && y == 0){
+                        square->destroyBit();
+                    }
+                });
+            } else { 
+                // Black just moved, king-side rook from h8->f8
+                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
+                    if (x == 5 && y == 7){
+                        rook = PieceForPlayer(1, Rook);
+                        rook->setPosition(square->getPosition());
+                        square->setBit(rook);
+                    } else if (x == 7 && y == 7){
+                        square->destroyBit();
+                    }
+                });
+            }
+        }
+    }
+    else if (_lastMove.flags & MoveFlags::QueenSideCastle) {
+        if (_lastMove.piece == King) {
+            if (_gameState->color == BLACK) {
+                // White just moved, queen-side rook from a1->d1
+                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
+                    if (x == 0 && y == 0){
+                        rook = PieceForPlayer(0, Rook);
+                        rook->setPosition(square->getPosition());
+                        square->setBit(rook);
+                    } else if (x == 2 && y == 0){
+                        square->destroyBit();
+                    }
+                });
+            } else {
+                // Black just moved, queen-side rook from a8->d8
+                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
+                    if (x == 0 && y == 7){
+                        rook = PieceForPlayer(1, Rook);
+                        rook->setPosition(square->getPosition());
+                        square->setBit(rook);
+                    } else if (x == 2 && y == 7){
+                        square->destroyBit();
+                    }
+                });
+            }
+        }
+    }
+
+	ClassGame::EndOfTurn();
 }
 
 void Chess::stopGame()

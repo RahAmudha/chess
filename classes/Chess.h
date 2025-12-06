@@ -3,10 +3,8 @@
 #include "Game.h"
 #include "Grid.h"
 #include "Bitboard.h"
-
-// Piece Move Generators
-#include "pieceMoves/BishopMoves.h"
-#include "pieceMoves/RookMoves.h"
+#include "GameState.h"
+#include "../Application.h"
 
 constexpr int pieceSize = 80;
 
@@ -21,6 +19,8 @@ public:
     bool canBitMoveFrom(Bit &bit, BitHolder &src) override;
     bool canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst) override;
     bool actionForEmptyHolder(BitHolder &holder) override;
+
+    void endTurn() override;
 
     void stopGame() override;
 
@@ -38,11 +38,8 @@ private:
     Player* ownerAt(int x, int y) const;
     void FENtoBoard(const std::string& fen);
     char pieceNotation(int x, int y) const;
-    BitboardElement getLegalMovesFor(ChessPiece piece, ChessSquare* src, int index);
 
     Grid* _grid;
-    
-    // Storing Precomputed Piece Generation in private vars
-    BishopMoves* _bMoves;
-    RookMoves* _rMoves;
+    GameState* _gameState;
+    BitMove _lastMove;
 };
