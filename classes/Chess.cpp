@@ -355,8 +355,28 @@ Player* Chess::ownerAt(int x, int y) const
     return square->bit()->getOwner();
 }
 
-Player* Chess::checkForWinner()
-{
+Player* Chess::checkForWinner() {
+    // Determine the player whose turn it is
+    Player* currentPlayer = getCurrentPlayer(); // your method to get the player to move
+
+    // Generate all legal moves for the current player
+    std::vector<BitMove> moves = _gameState->generateAllMoves();
+
+    // Check if king is in check
+    bool inCheck = _gameState->isKingInCheck();
+
+    if (moves.empty()) {
+        if (inCheck) {
+            // Current player has no moves and is in check → checkmate
+
+            return getPlayerAt(1 - currentPlayer->playerNumber());
+        } else {
+            // Current player has no moves but not in check → stalemate
+            return nullptr; // draw, no winner
+        }
+    }
+
+    // If there are moves, no winner yet
     return nullptr;
 }
 

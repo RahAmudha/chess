@@ -67,6 +67,20 @@ void GameState::shutdown() {
     cleanupMagicBitboards();
 }
 
+bool GameState::isKingInCheck() {
+    const char myColor = color;
+    const char opponentColor = (myColor == WHITE) ? BLACK : WHITE;
+
+    int kingIdx = (myColor == WHITE) ? WHITE_KING : BLACK_KING;
+    uint64_t kingBB = _bitboards[kingIdx].getData();
+
+    if (kingBB == 0) return false; // should never happen
+
+    int kingSquare = __builtin_ctzll(kingBB); // index of least significant bit
+
+    return isSquareAttacked(kingSquare, opponentColor, _bitboards);
+}
+
 void GameState::addPawnBitboardMovesToList(std::vector<BitMove>& moves, const BitBoard bitboard, const int shift) {
     if (bitboard.getData() == 0)
         return;

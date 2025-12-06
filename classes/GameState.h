@@ -222,6 +222,7 @@ public:
 
     std::vector<BitMove> generateAllMoves();
     void shutdown();
+    bool isKingInCheck();
 private:
     const BitBoard generatePawnAttacks(const BitBoard pawns, char color);
     uint64_t generatePawnAttacksBitBoard(int square, char color);
