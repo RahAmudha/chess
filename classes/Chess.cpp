@@ -4,6 +4,9 @@
 #include <limits>
 #include <cmath>
 
+static const int MATE_SCORE = 1000000;
+static const int INF = 10000000;
+
 Chess::Chess()
 {
     _grid = new Grid(8, 8);
@@ -55,6 +58,8 @@ void Chess::setUpBoard()
     FENtoBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
 
     _gameState->init(stateString().c_str(), WHITE);
+
+    _gameState->rebuildBitboards();
 
     startGame();
 }
@@ -256,7 +261,7 @@ bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
     return false;
 }
 
-// Only added the line where we push the last move into the engine
+// Added Castling 
 void Chess::endTurn(){
     _gameOptions.currentTurnNo++;
 	std::string startState = stateString();
@@ -267,67 +272,57 @@ void Chess::endTurn(){
 	turn->_gameNumber = _gameOptions.gameNumber;
 	_turns.push_back(turn);
 
-    _gameState->pushMove(_lastMove);
-
-    _lastMove.print();
-
-        // -----------------------
-    // GUI update for castling
-    // -----------------------
+    _gameState->applyMove(_lastMove);
 
     Bit* rook;
+
     if (_lastMove.flags & MoveFlags::KingSideCastle) {
         if (_lastMove.piece == King) {
-            // Move the rook visually for white or black
-            if (_gameState->color == BLACK) { 
-                // White just moved, king-side rook from h1->f1
-                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
-                    if (x == 5 && y == 0){
-                        rook = PieceForPlayer(0, Rook);
-                        rook->setPosition(square->getPosition());
-                        square->setBit(rook);
-                    } else if (x == 7 && y == 0){
-                        square->destroyBit();
-                    }
-                });
-            } else { 
-                // Black just moved, king-side rook from h8->f8
-                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
-                    if (x == 5 && y == 7){
-                        rook = PieceForPlayer(1, Rook);
-                        rook->setPosition(square->getPosition());
-                        square->setBit(rook);
-                    } else if (x == 7 && y == 7){
-                        square->destroyBit();
-                    }
-                });
+
+            if (_gameState->color == BLACK) {
+
+                ChessSquare* from = _grid->getSquare(7, 0);
+                ChessSquare* to   = _grid->getSquare(5, 0);
+
+                rook = from->bit();
+
+                rook->setPosition(to->getPosition());
+                to->setBit(rook);
+            }
+            else {
+
+                ChessSquare* from = _grid->getSquare(7, 7);
+                ChessSquare* to   = _grid->getSquare(5, 7);
+
+                rook = from->bit();
+
+                rook->setPosition(to->getPosition());
+                to->setBit(rook);
             }
         }
     }
     else if (_lastMove.flags & MoveFlags::QueenSideCastle) {
         if (_lastMove.piece == King) {
+
             if (_gameState->color == BLACK) {
-                // White just moved, queen-side rook from a1->d1
-                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
-                    if (x == 0 && y == 0){
-                        rook = PieceForPlayer(0, Rook);
-                        rook->setPosition(square->getPosition());
-                        square->setBit(rook);
-                    } else if (x == 2 && y == 0){
-                        square->destroyBit();
-                    }
-                });
-            } else {
-                // Black just moved, queen-side rook from a8->d8
-                _grid->forEachSquare([&](ChessSquare* square, int x, int y){
-                    if (x == 0 && y == 7){
-                        rook = PieceForPlayer(1, Rook);
-                        rook->setPosition(square->getPosition());
-                        square->setBit(rook);
-                    } else if (x == 2 && y == 7){
-                        square->destroyBit();
-                    }
-                });
+
+                ChessSquare* from = _grid->getSquare(0, 0);
+                ChessSquare* to   = _grid->getSquare(3, 0);
+
+                rook = from->bit();
+
+                rook->setPosition(to->getPosition());
+                to->setBit(rook);
+            }
+            else {
+
+                ChessSquare* from = _grid->getSquare(0, 7);
+                ChessSquare* to   = _grid->getSquare(3, 7);
+
+                rook = from->bit();
+
+                rook->setPosition(to->getPosition());
+                to->setBit(rook);
             }
         }
     }
@@ -382,7 +377,8 @@ Player* Chess::checkForWinner() {
 
 bool Chess::checkForDraw()
 {
-    return false;
+    std::vector<BitMove> moves = _gameState->generateAllMoves();
+    return moves.empty() && !_gameState->isKingInCheck();
 }
 
 std::string Chess::initialStateString()
@@ -411,4 +407,176 @@ void Chess::setStateString(const std::string &s)
             square->setBit(nullptr);
         }
     });
+}
+
+static inline int popcount64(uint64_t x) {
+    #if defined(__GNUG__) || defined(__clang__)
+        return x ? __builtin_popcountll(x) : 0;
+    #else
+        int c=0; while (x) { x &= x-1; ++c; } return c;
+    #endif
+}
+
+static inline bool isCaptureMove(const BitMove &m, const GameState *gs) {
+    unsigned char target = gs->state[m.to];
+    if (target == '0') return false;
+    // capture if case differs (upper = white, lower = black)
+    bool fromIsWhite = (gs->state[m.from] >= 'A' && gs->state[m.from] <= 'Z');
+    bool toIsWhite   = (target >= 'A' && target <= 'Z');
+    return fromIsWhite != toIsWhite;
+}
+
+int Chess::evaluate() {
+    auto &bbs = _gameState->_bitboards;
+
+    int whiteMaterial = 0;
+    int blackMaterial = 0;
+
+    // Using your exact values:
+    whiteMaterial += popcount64(bbs[WHITE_PAWNS].getData())   * PIECE_VALUES[Pawn];
+    whiteMaterial += popcount64(bbs[WHITE_KNIGHTS].getData()) * PIECE_VALUES[Knight];
+    whiteMaterial += popcount64(bbs[WHITE_BISHOPS].getData()) * PIECE_VALUES[Bishop];
+    whiteMaterial += popcount64(bbs[WHITE_ROOKS].getData())   * PIECE_VALUES[Rook];
+    whiteMaterial += popcount64(bbs[WHITE_QUEENS].getData())  * PIECE_VALUES[Queen];
+
+    blackMaterial += popcount64(bbs[BLACK_PAWNS].getData())   * PIECE_VALUES[Pawn];
+    blackMaterial += popcount64(bbs[BLACK_KNIGHTS].getData()) * PIECE_VALUES[Knight];
+    blackMaterial += popcount64(bbs[BLACK_BISHOPS].getData()) * PIECE_VALUES[Bishop];
+    blackMaterial += popcount64(bbs[BLACK_ROOKS].getData())   * PIECE_VALUES[Rook];
+    blackMaterial += popcount64(bbs[BLACK_QUEENS].getData())  * PIECE_VALUES[Queen];
+
+    return whiteMaterial - blackMaterial; // White perspective
+}
+
+int Chess::negamax(int depth, int alpha, int beta) {
+    // Leaf
+    if (depth == 0) {
+        // Ensure bitboards are synced (should be the case if we rebuilt after push)
+        // return value from side-to-move perspective:
+        int val = evaluate();
+        return val * _gameState->color; // color is +1 white, -1 black
+    }
+
+    // Generate legal moves (generateAllMoves rebuilds bitboards for that node)
+    std::vector<BitMove> moves = _gameState->generateAllMoves();
+
+    if (moves.empty()) {
+        // mate or stalemate
+        if (_gameState->isKingInCheck()) {
+            // Checkmate: large negative value for side to move.
+            return - (MATE_SCORE + depth); // prefer shorter mate (depth as tiebreaker)
+        } else {
+            // Stalemate -> draw
+            return 0;
+        }
+    }
+
+    // Simple move ordering: captures first (stable)
+    std::stable_sort(moves.begin(), moves.end(), [&](const BitMove &a, const BitMove &b){
+        bool aCap = isCaptureMove(a, _gameState);
+        bool bCap = isCaptureMove(b, _gameState);
+        if (aCap != bCap) return aCap;           // captures first
+        return a.from < b.from;                  // tie-breaker stable
+    });
+
+    int best = -INF;
+
+    for (const auto &m : moves) {
+        _gameState->pushMove(m);
+
+        int score = -negamax(depth - 1, -beta, -alpha);
+
+        _gameState->popState();
+
+        if (score > best) best = score;
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) {
+            // cutoff
+            break;
+        }
+    }
+
+    return best;
+}
+
+BitMove Chess::findBestMove(int depth) {
+    BitMove bestMove;
+    int alpha = -INF;
+    int beta  =  INF;
+    int bestScore = -INF;
+
+    // Root move generation (this will rebuild bitboards)
+    std::vector<BitMove> moves = _gameState->generateAllMoves();
+    if (moves.empty()) return bestMove;
+
+    // Order root moves (captures first)
+    std::stable_sort(moves.begin(), moves.end(), [&](const BitMove &a, const BitMove &b){
+        bool aCap = isCaptureMove(a, _gameState);
+        bool bCap = isCaptureMove(b, _gameState);
+        if (aCap != bCap) return aCap;
+        return a.from < b.from;
+    });
+
+    for (const auto &m : moves) {
+        _gameState->pushMove(m);
+
+        int val = -negamax(depth - 1, -beta, -alpha);
+
+        _gameState->popState();
+
+        if (val > bestScore) {
+            bestScore = val;
+            bestMove = m;
+        }
+        if (val > alpha) alpha = val;
+    }
+
+    return bestMove;
+}
+
+void Chess::updateAI() {
+    Player* current = getCurrentPlayer();
+
+    // If current player is human, do nothing.
+    // Assuming player 0 = human, player 1 = AI.
+    if (current->playerNumber() == 0)
+        return;
+
+    // Choose depth (tweak as needed)
+    const int depth = 6;
+
+    // Find best move using your negamax search
+    BitMove best = findBestMove(depth);
+
+    // If something is wrong and AI can't find a move, stop.
+    if (best.from < 0 || best.to < 0)
+        return;
+
+    // Execute move on GUI board
+    int fromX = best.from % 8;
+    int fromY = best.from / 8;
+    int toX   = best.to % 8;
+    int toY   = best.to / 8;
+
+    ChessSquare* source      = _grid->getSquare(fromX, fromY);
+    ChessSquare* destination = _grid->getSquare(toX, toY);
+
+    Bit* movingPiece = source->bit();
+    if (!movingPiece) return; // safety check
+
+    // Capture if needed
+    if (destination->bit()) {
+        destination->destroyBit();
+    }
+
+    // Move the piece visually
+    destination->setBit(movingPiece);
+    movingPiece->setPosition(destination->getPosition());
+    source->setBit(nullptr);
+
+    // Update engine internal state
+    _lastMove = best;
+
+    // End the turn
+    endTurn();
 }

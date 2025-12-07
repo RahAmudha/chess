@@ -58,8 +58,6 @@ void GameState::init(const char* newState, char player) {
         }
 
         _initedMagic = true;
-
-        std::cout << "initialized magic bitboards and bitboard lookup" << std::endl;
     }
 }
 
@@ -463,7 +461,7 @@ std::vector<BitMove> GameState::generateAllMoves()
     moves.reserve(32);
 
     for (int i=0; i<e_numBitboards; i++) {
-        _bitboards[i] = 0;
+        _bitboards[i].setData(0);
     }
 
     for(int i = 0; i<64; i++) {
@@ -489,7 +487,6 @@ std::vector<BitMove> GameState::generateAllMoves()
     int kingIdx   = (color == WHITE) ? WHITE_KING    : BLACK_KING;
     int myAllIdx  = (color == WHITE) ? WHITE_ALL_PIECES : BLACK_ALL_PIECES;
 
-    int oppPawnIdx  = (color == WHITE) ? BLACK_PAWNS   : WHITE_PAWNS;
     int oppAllIdx   = (color == WHITE) ? BLACK_ALL_PIECES : WHITE_ALL_PIECES;
 
     generateKnightMoves(moves, _bitboards[knightIdx], ~_bitboards[myAllIdx].getData());
@@ -502,6 +499,34 @@ std::vector<BitMove> GameState::generateAllMoves()
     filterOutIllegalMoves(moves);
 
     return moves;
+}
+
+void GameState::rebuildBitboards() {
+    for (int i = 0; i < e_numBitboards; i++)
+        _bitboards[i].setData(0);
+
+    for (int sq = 0; sq < 64; sq++) {
+        char p = state[sq];
+        if (p == '0') continue;
+
+        uint64_t bit = (1ULL << sq);
+
+        switch (p) {
+            case 'P': _bitboards[WHITE_PAWNS] |= bit; break;
+            case 'N': _bitboards[WHITE_KNIGHTS] |= bit; break;
+            case 'B': _bitboards[WHITE_BISHOPS] |= bit; break;
+            case 'R': _bitboards[WHITE_ROOKS] |= bit; break;
+            case 'Q': _bitboards[WHITE_QUEENS] |= bit; break;
+            case 'K': _bitboards[WHITE_KING] |= bit; break;
+
+            case 'p': _bitboards[BLACK_PAWNS] |= bit; break;
+            case 'n': _bitboards[BLACK_KNIGHTS] |= bit; break;
+            case 'b': _bitboards[BLACK_BISHOPS] |= bit; break;
+            case 'r': _bitboards[BLACK_ROOKS] |= bit; break;
+            case 'q': _bitboards[BLACK_QUEENS] |= bit; break;
+            case 'k': _bitboards[BLACK_KING] |= bit; break;
+        }
+    }
 }
 
 
