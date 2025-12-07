@@ -79,12 +79,29 @@ bool GameState::isKingInCheck() {
     return isSquareAttacked(kingSquare, opponentColor, _bitboards);
 }
 
-void GameState::addPawnBitboardMovesToList(std::vector<BitMove>& moves, const BitBoard bitboard, const int shift) {
+void GameState::addPawnBitboardMovesToList(
+    std::vector<BitMove>& moves,
+    const BitBoard bitboard,
+    const int shift,
+    char color
+) {
     if (bitboard.getData() == 0)
         return;
+
+    uint64_t promotionMask = (color == WHITE) ? Rank8 : Rank1;
+
     bitboard.forEachBit([&](int toSquare) {
-        int fromSquare = toSquare - shift; // Correct calculation for fromSquare
-        moves.emplace_back(fromSquare, toSquare, Pawn);
+
+        int fromSquare = toSquare - shift;
+
+        // Check promotion
+        if ((1ULL << toSquare) & promotionMask) {
+            BitMove promo(fromSquare, toSquare, Pawn);
+            promo.flags |= IsPromotion;    // Mark it as a promotion
+            moves.emplace_back(promo);
+        } else {
+            moves.emplace_back(fromSquare, toSquare, Pawn);
+        }
     });
 }
 
@@ -109,14 +126,14 @@ void GameState::generatePawnMoveList(std::vector<BitMove>& moves, const BitBoard
     int captureRightShift = (color == WHITE) ? 9 : -7;
     
     // Add single pawn moves to the list
-    addPawnBitboardMovesToList(moves, singleMoves, shiftForward);
+    addPawnBitboardMovesToList(moves, singleMoves, shiftForward, color);
 
     // Add double pawn moves to the list
-    addPawnBitboardMovesToList(moves, doubleMoves, doubleShift);
+    addPawnBitboardMovesToList(moves, doubleMoves, doubleShift, color);
 
     // Add pawn captures to the list
-    addPawnBitboardMovesToList(moves, capturesLeft, captureLeftShift);
-    addPawnBitboardMovesToList(moves, capturesRight, captureRightShift);
+    addPawnBitboardMovesToList(moves, capturesLeft, captureLeftShift, color);
+    addPawnBitboardMovesToList(moves, capturesRight, captureRightShift, color);
 }
 
 // Generate actual move objects from a bitboard
@@ -134,9 +151,6 @@ void GameState::generateKnightMoves(std::vector<BitMove>& moves, BitBoard knight
 void GameState::generateKingMoves(std::vector<BitMove>& moves, BitBoard piecesBoard, uint64_t occupancy) {
     piecesBoard.forEachBit([&](int fromSquare) {
 
-        // --------------------------------------------------------
-        // NORMAL KING MOVES
-        // --------------------------------------------------------
         uint64_t attacks = KingAttacks[fromSquare];
 
         // Remove friendly pieces
@@ -146,7 +160,6 @@ void GameState::generateKingMoves(std::vector<BitMove>& moves, BitBoard piecesBo
 
         uint64_t legalMoves = attacks & ~friendlyPieces;
 
-        // Remove castling target squares to avoid duplication
         if ((flags & KingSideCastle) && fromSquare == (color == WHITE ? 4 : 60)) {
             legalMoves &= ~(1ULL << (color == WHITE ? 6 : 62));
         }
@@ -159,20 +172,12 @@ void GameState::generateKingMoves(std::vector<BitMove>& moves, BitBoard piecesBo
             moves.emplace_back(fromSquare, toSquare, King);
         });
 
-        // --------------------------------------------------------
-        // CASTLING LOGIC
-        // --------------------------------------------------------
-
         bool white = (color == WHITE);
         int enemyColor = white ? BLACK : WHITE;
 
-        // White king starts on E1=4, black king on E8=60
         if ((white && fromSquare == 4) ||
             (!white && fromSquare == 60))
         {
-            // ========================
-            // KING SIDE CASTLING
-            // ========================
             if (flags & KingSideCastle)
             {
                 if (white)
@@ -199,9 +204,6 @@ void GameState::generateKingMoves(std::vector<BitMove>& moves, BitBoard piecesBo
                 }
             }
 
-            // ========================
-            // QUEEN SIDE CASTLING
-            // ========================
             if (flags & QueenSideCastle)
             {
                 if (white)
@@ -229,7 +231,7 @@ void GameState::generateKingMoves(std::vector<BitMove>& moves, BitBoard piecesBo
             }
         }
 
-    }); // forEachBit king
+    });
 }
 
 // Generate actual move objects from a bitboard

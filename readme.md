@@ -1,3 +1,5 @@
 I did this code on WSL, using main_macos.cpp to run it.
 
-I fullfilled all the requirements for the FEN string I think. My comments are pretty funny
+This was a very interesting project to do. I definitely had many challenges when first starting out, but I think I managed to do a pretty good job. The first challenge I faced was actually creating the magic bitboard moves. I spent around two days making the moves as efficient as possible, and then realized that the professor posted his code. I considered sticking with my old code, but unfortunately the code was not abstracted well enough to be used easily with the negamax algorithm. After adopting the new code, I struggled for a bit with enabling castling and promotions. Surprisingly after doing negamax three times in this class, it wasn't as hard as before.
+
+The current depth I have it set to is 6, and it takes anywhere between 1-5 seconds to respond with a move. Before the competition, I will improve my code to reach at least a depth of 10 hopefully. As for how the AI plays, it actually plays decently well. I can still beat it though, although that is cause I actually know how to play chess well. My evaluation function is pretty basic, but I will expand upon it before the competition.

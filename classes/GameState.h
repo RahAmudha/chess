@@ -17,6 +17,9 @@ constexpr uint64_t NotHFile(0x7F7F7F7F7F7F7F7FULL); // H file mask
 constexpr uint64_t Rank3(0x0000000000FF0000ULL); // Rank 3 mask
 constexpr uint64_t Rank6(0x0000FF0000000000ULL); // Rank 6 mask
 
+constexpr uint64_t Rank1(0x00000000000000FFULL);
+constexpr uint64_t Rank8(0xFF00000000000000ULL);
+
 enum AllBitBoards
 {
     WHITE_PAWNS,
@@ -420,7 +423,7 @@ private:
 
     void generateBishopMoves(std::vector<BitMove>& moves, BitBoard bishopBoard, uint64_t occupancy, uint64_t friendlies);
     void generatePawnMoveList(std::vector<BitMove>& moves, const BitBoard pawns, const BitBoard emptySquares, const BitBoard enemyPieces, char color);
-    void addPawnBitboardMovesToList(std::vector<BitMove>& moves, const BitBoard bitboard, const int shift);
+    void addPawnBitboardMovesToList(std::vector<BitMove>& moves, const BitBoard bitboard, const int shift, char color);
     bool isSquareAttacked(int square, char attackerColor, const BitBoard (&boards)[e_numBitboards]);
     void filterOutIllegalMoves(std::vector<BitMove>& moves);
 

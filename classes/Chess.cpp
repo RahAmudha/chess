@@ -1,5 +1,6 @@
 #include "Chess.h"
 #include "Bitboard.h"
+#include "GameState.h"
 #include <cstdint>
 #include <limits>
 #include <cmath>
@@ -274,7 +275,7 @@ void Chess::endTurn(){
 
     _gameState->applyMove(_lastMove);
 
-    Bit* rook;
+    Bit* bit;
 
     if (_lastMove.flags & MoveFlags::KingSideCastle) {
         if (_lastMove.piece == King) {
@@ -284,20 +285,20 @@ void Chess::endTurn(){
                 ChessSquare* from = _grid->getSquare(7, 0);
                 ChessSquare* to   = _grid->getSquare(5, 0);
 
-                rook = from->bit();
+                bit = from->bit();
 
-                rook->setPosition(to->getPosition());
-                to->setBit(rook);
+                bit->setPosition(to->getPosition());
+                to->setBit(bit);
             }
             else {
 
                 ChessSquare* from = _grid->getSquare(7, 7);
                 ChessSquare* to   = _grid->getSquare(5, 7);
 
-                rook = from->bit();
+                bit = from->bit();
 
-                rook->setPosition(to->getPosition());
-                to->setBit(rook);
+                bit->setPosition(to->getPosition());
+                to->setBit(bit);
             }
         }
     }
@@ -309,22 +310,32 @@ void Chess::endTurn(){
                 ChessSquare* from = _grid->getSquare(0, 0);
                 ChessSquare* to   = _grid->getSquare(3, 0);
 
-                rook = from->bit();
+                bit = from->bit();
 
-                rook->setPosition(to->getPosition());
-                to->setBit(rook);
+                bit->setPosition(to->getPosition());
+                to->setBit(bit);
             }
             else {
 
                 ChessSquare* from = _grid->getSquare(0, 7);
                 ChessSquare* to   = _grid->getSquare(3, 7);
 
-                rook = from->bit();
+                bit = from->bit();
 
-                rook->setPosition(to->getPosition());
-                to->setBit(rook);
+                bit->setPosition(to->getPosition());
+                to->setBit(bit);
             }
         }
+    } else if (_lastMove.flags & MoveFlags::IsPromotion) {
+        ChessSquare* to = _grid->getSquare(_lastMove.to % 8, _lastMove.to / 8);
+
+        ChessSquare* from = _grid->getSquare(_lastMove.from % 8, _lastMove.from / 8);
+        bit = from->bit();
+
+        Bit* promotedPiece = PieceForPlayer((_gameState->color == WHITE) ? 1 : 0, Queen);
+
+        promotedPiece->setPosition(to->getPosition());
+        to->setBit(promotedPiece);
     }
 
 	ClassGame::EndOfTurn();
